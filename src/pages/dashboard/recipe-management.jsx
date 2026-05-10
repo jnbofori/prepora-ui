@@ -213,7 +213,7 @@ export function RecipeManagement() {
             <LinkIcon className="h-5 w-5" />
             Import from URL
           </Button>
-          <Button className="flex items-center gap-2" color="gray" onClick={openNew}>
+          <Button className="flex items-center gap-2 bg-secondary" onClick={openNew}>
             <PlusIcon className="h-5 w-5" />
             New recipe
           </Button>
@@ -276,7 +276,7 @@ export function RecipeManagement() {
       ) : null}
 
       <Card className="border border-blue-gray-100 shadow-sm">
-        <CardHeader variant="gradient" color="gray" className="p-6">
+        <CardHeader variant="gradient" className="p-6 bg-primary">
           <Typography variant="h6" color="white">
             Library
           </Typography>

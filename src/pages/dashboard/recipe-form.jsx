@@ -330,7 +330,7 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
               </CardBody>
             </Card>
 
-            <Card className="mb-6 border border-blue-gray-100 shadow-sm">
+            <Card className="mb-6 mt-12 border border-blue-gray-100 shadow-sm">
               <CardHeader variant="gradient" color="gray" className="mb-2 p-6">
                 <Typography variant="h6" color="white">
                   Ingredients
@@ -341,8 +341,8 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
                   {({ push, remove }) => (
                     <div className="flex flex-col gap-3">
                       {values.ingredients.map((_, idx) => (
-                        <div key={idx} className="grid grid-cols-1 items-end gap-3 md:grid-cols-12">
-                          <div className="md:col-span-3">
+                        <div key={idx} className="grid grid-cols-1 items-end gap-3 md:grid-cols-10">
+                          <div className="md:col-span-2">
                             <MyTextInput
                               name={`ingredients.${idx}.name`}
                               label="Ingredient"
@@ -369,7 +369,7 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
                               size="lg"
                             />
                           </div>
-                          <div className="md:col-span-4">
+                          <div className="md:col-span-3">
                             <MyTextInput
                               name={`ingredients.${idx}.note`}
                               label="Note"
@@ -377,7 +377,7 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
                               size="lg"
                             />
                           </div>
-                          <div className="md:col-span-1 flex justify-end pb-2">
+                          <div className="md:col-span-1 flex justify-start pb-2">
                             <Button
                               type="button"
                               variant="text"
@@ -406,7 +406,7 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
               </CardBody>
             </Card>
 
-            <Card className="mb-6 border border-blue-gray-100 shadow-sm">
+            <Card className="mb-6 mt-12 border border-blue-gray-100 shadow-sm">
               <CardHeader variant="gradient" color="gray" className="mb-2 p-6">
                 <Typography variant="h6" color="white">
                   Steps

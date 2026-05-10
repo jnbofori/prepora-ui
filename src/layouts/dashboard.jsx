@@ -44,7 +44,7 @@ export function Dashboard() {
         routes={routes}
         brandName="Recipe Studio"
         brandImg={
-          sidenavType === "dark" ? "/img/logo-ct.png" : "/img/logo-ct-dark.png"
+          sidenavType === "dark" ? "/img/prepora-logo.png" : "/img/prepora-logo.png"
         }
       />
       <div className="p-4 xl:ml-80">

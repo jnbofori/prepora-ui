@@ -27,13 +27,20 @@ export function Sidenav({ brandImg, brandName, routes }) {
       <div
         className={`relative`}
       >
-        <Link to="/" className="py-6 px-8 text-center">
+        {/* <Link to="/" className="py-6 px-8 text-center">
           <Typography
             variant="h6"
             color={sidenavType === "dark" ? "white" : "blue-gray"}
           >
             {brandName}
           </Typography>
+        </Link> */}
+        <Link to="/" className="pt-2 px-8 text-center flex justify-center">
+          <img
+            src={brandImg}
+            alt={brandName}
+            className="h-32 w-auto object-contain"
+          />
         </Link>
         <IconButton
           variant="text"
@@ -65,15 +72,10 @@ export function Sidenav({ brandImg, brandName, routes }) {
                 <NavLink to={`/${layout}${path}`}>
                   {({ isActive }) => (
                     <Button
-                      variant={isActive ? "gradient" : "text"}
-                      color={
-                        isActive
-                          ? sidenavColor 
-                          : sidenavType === "dark"
-                          ? "white"
-                          : "blue-gray"
-                      }
-                      className="flex items-center gap-4 px-4 capitalize"
+                      variant={isActive ? "text" : "text"}
+                      className={`flex items-center gap-4 px-4 capitalize ${
+                        isActive ? "bg-primary text-white" : "bg-white text-black-700"
+                      }`}
                       fullWidth
                     >
                       {icon}
