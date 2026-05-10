@@ -24,8 +24,10 @@ import {
   fetchRecipesPaged,
   importRecipePreview,
 } from "@/api/recipes";
+import { useAlert } from "@/context/AlertDialogContext";
 
 export function RecipeManagement() {
+  const alerts = useAlert();
   const [view, setView] = useState("list");
   const [loading, setLoading] = useState(true);
   const [pageData, setPageData] = useState({
@@ -117,7 +119,13 @@ export function RecipeManagement() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this recipe? This cannot be undone.")) return;
+    const ok = await alerts.confirm({
+      title: "Delete recipe?",
+      message: "This cannot be undone.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+    });
+    if (!ok) return;
     try {
       await deleteRecipe(id);
       if (view === "detail" && detail?.id === id) {
@@ -127,7 +135,9 @@ export function RecipeManagement() {
       loadList();
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.message || e?.message || "Delete failed.");
+      await alerts.error({
+        message: e?.response?.data?.message || e?.message || "Delete failed.",
+      });
     }
   };
 
@@ -141,7 +151,9 @@ export function RecipeManagement() {
       }
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.message || e?.message || "Duplicate failed.");
+      await alerts.error({
+        message: e?.response?.data?.message || e?.message || "Duplicate failed.",
+      });
     }
   };
 
@@ -154,7 +166,9 @@ export function RecipeManagement() {
       setImportPreview(preview);
     } catch (e) {
       console.error(e);
-      alert(e?.response?.data?.message || e?.message || "Import preview failed.");
+      await alerts.error({
+        message: e?.response?.data?.message || e?.message || "Import preview failed.",
+      });
     } finally {
       setImportBusy(false);
     }

@@ -54,6 +54,12 @@ export default function RecipeDetail({
     return scaledServings / detail.servings;
   }, [detail, scaledServings]);
 
+  const sortedPhotos = useMemo(() => {
+    const list = detail?.photos;
+    if (!Array.isArray(list) || list.length === 0) return [];
+    return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [detail?.photos]);
+
   return (
     <div className="mt-6 mb-8 flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -180,13 +186,25 @@ export default function RecipeDetail({
               </div>
             </CardBody>
           </Card>
-          <div>
-            {detail.coverImageUrl ? (
-              <img
-                src={detail.coverImageUrl}
-                alt=""
-                className="w-full rounded-xl object-cover shadow-md ring-1 ring-blue-gray-100"
-              />
+          <div className="flex flex-col gap-4">
+            {sortedPhotos.length > 0 ? (
+              sortedPhotos.map((photo, i) => (
+                <figure
+                  key={photo.id ?? `photo-${i}`}
+                  className="relative overflow-hidden rounded-xl shadow-md ring-1 ring-blue-gray-100"
+                >
+                  {photo.isCover ? (
+                    <span className="absolute left-2 top-2 z-10 rounded-md bg-black/55 px-2 py-0.5 text-xs font-medium text-white">
+                      Cover
+                    </span>
+                  ) : null}
+                  <img
+                    src={photo.url}
+                    alt=""
+                    className="aspect-[4/3] w-full object-cover"
+                  />
+                </figure>
+              ))
             ) : (
               <Card className="border border-dashed border-blue-gray-200 bg-white">
                 <CardBody>

@@ -18,15 +18,21 @@ import { MaterialTailwindControllerProvider } from "@/context";
 import "../public/css/tailwind.css";
 import "../public/css/main.css";
 import { AuthContextProvider } from "./context/AuthContext";
+import { AlertDialogProvider } from "./context/AlertDialogContext";
+import { ToastProvider } from "./context/ToastContext";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
       <ThemeProvider>
         <MaterialTailwindControllerProvider>
-          <AuthContextProvider>
-            <App />
-          </AuthContextProvider>
+          <AlertDialogProvider>
+            <ToastProvider>
+              <AuthContextProvider>
+                <App />
+              </AuthContextProvider>
+            </ToastProvider>
+          </AlertDialogProvider>
         </MaterialTailwindControllerProvider>
       </ThemeProvider>
     </BrowserRouter>

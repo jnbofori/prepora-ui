@@ -102,3 +102,38 @@ export async function importRecipePreview(url) {
   const { data } = await api.post("/recipes/import", { url });
   return data;
 }
+
+/**
+ * POST /recipes/{id}/photos/batch
+ * Multipart body: repeated "files" parts (one per file).
+ * @param {string} recipeId
+ * @param {File[]} files
+ */
+export async function uploadRecipePhotosBatch(recipeId, files) {
+  if (!files?.length) return null;
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  const { data } = await api.post(`/recipes/${recipeId}/photos/batch`, formData, {
+    transformRequest: [
+      (body, headers) => {
+        if (body instanceof FormData) {
+          if (headers && typeof headers.delete === "function") {
+            headers.delete("Content-Type");
+          } else if (headers) {
+            delete headers["Content-Type"];
+            delete headers["content-type"];
+          }
+        }
+        return body;
+      },
+    ],
+  });
+  return data;
+}
+
+/** DELETE /recipes/{recipeId}/photos/{photoId} */
+export async function deleteRecipePhoto(recipeId, photoId) {
+  await api.delete(`/recipes/${recipeId}/photos/${photoId}`);
+}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Card,
   CardHeader,
@@ -6,13 +6,25 @@ import {
   Typography,
   Button,
 } from "@material-tailwind/react";
-import { ArrowLeftIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, PhotoIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Formik, Form, FieldArray } from "formik";
 import * as Yup from "yup";
 import MyTextInput from "@/components/MyTextInput";
-import { createRecipe, updateRecipe } from "@/api/recipes";
+import {
+  createRecipe,
+  deleteRecipePhoto,
+  updateRecipe,
+  uploadRecipePhotosBatch,
+} from "@/api/recipes";
+import { useAlert } from "@/context/AlertDialogContext";
+import { useToast } from "@/context/ToastContext";
 
 const httpsUrlRegex = /^https:\/\/.+/i;
+
+function sortRecipePhotos(list) {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
 
 const ingredientSchema = Yup.object().shape({
   name: Yup.string().trim().max(500, "Max 500 characters").required("Required"),
@@ -186,12 +198,66 @@ function mapProblemErrorsToFormik(problem) {
   return output;
 }
 
+function revokePreviewUrls(items) {
+  for (const item of items) {
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  }
+}
+
 export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [photoQueue, setPhotoQueue] = useState([]);
+  const [photoList, setPhotoList] = useState(() => sortRecipePhotos(recipe?.photos));
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
+  const fileInputRef = useRef(null);
+  const photoQueueRef = useRef(photoQueue);
+  const recipeIdForPhotosRef = useRef(null);
+  const alerts = useAlert();
+  const notify = useToast();
   const isEdit = Boolean(recipe?.id);
 
+  photoQueueRef.current = photoQueue;
+
+  useEffect(() => {
+    const id = recipe?.id;
+    if (!id) return;
+    if (id !== recipeIdForPhotosRef.current) {
+      recipeIdForPhotosRef.current = id;
+      setPhotoList(sortRecipePhotos(recipe?.photos));
+    }
+  }, [recipe?.id, recipe?.photos]);
+
+  useEffect(() => {
+    return () => revokePreviewUrls(photoQueueRef.current);
+  }, []);
+
   const initialValues = buildInitialValues(recipe, importPreview);
+
+  const handleDeleteExistingPhoto = async (photo) => {
+    const photoId = photo?.id;
+    if (!photoId || !recipe?.id) return;
+    const ok = await alerts.confirm({
+      title: "Delete photo?",
+      message: "This image will be removed from the recipe permanently.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+    });
+    if (!ok) return;
+    try {
+      setDeletingPhotoId(photoId);
+      await deleteRecipePhoto(recipe.id, photoId);
+      setPhotoList((list) => list.filter((p) => p.id !== photoId));
+      notify.success("Photo deleted.");
+    } catch (e) {
+      console.error(e);
+      const msg =
+        e?.response?.data?.message || e?.message || "Could not delete the photo.";
+      notify.error(msg);
+    } finally {
+      setDeletingPhotoId(null);
+    }
+  };
 
   const handleSubmit = async (values, { setErrors }) => {
     try {
@@ -226,6 +292,22 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
 
       if (isEdit) {
         await updateRecipe(recipe.id, payload);
+        if (photoQueue.length > 0) {
+          try {
+            await uploadRecipePhotosBatch(
+              recipe.id,
+              photoQueue.map((p) => p.file),
+            );
+          } catch (photoErr) {
+            console.error(photoErr);
+            setSubmitError(
+              `Recipe saved, but photos failed to upload: ${parseApiError(photoErr)}`,
+            );
+            return;
+          }
+          revokePreviewUrls(photoQueue);
+          setPhotoQueue([]);
+        }
       } else {
         await createRecipe(payload);
       }
@@ -329,6 +411,128 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
                 />
               </CardBody>
             </Card>
+
+            {isEdit ? (
+              <Card className="mb-6 mt-12 border border-blue-gray-100 shadow-sm">
+                <CardHeader variant="gradient" color="gray" className="mb-2 p-6">
+                  <Typography variant="h6" color="white">
+                    Photos
+                  </Typography>
+                </CardHeader>
+                <CardBody className="flex flex-col gap-4">
+                  <Typography variant="small" className="text-blue-gray-600">
+                    New images are uploaded when you save the recipe (batch to the server).
+                  </Typography>
+                  {photoList.length > 0 ? (
+                    <div>
+                      <Typography variant="small" className="mb-2 font-bold text-blue-gray-500">
+                        Current photos
+                      </Typography>
+                      <div className="flex flex-wrap gap-3">
+                        {photoList.map((photo, idx) => (
+                          <div
+                            key={photo.id ?? `existing-${idx}`}
+                            className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-lg ring-1 ring-blue-gray-100"
+                          >
+                            <img
+                              src={photo.url}
+                              alt=""
+                              className={`h-full w-full object-cover transition-opacity ${
+                                deletingPhotoId === photo.id ? "opacity-40" : ""
+                              }`}
+                            />
+                            <div
+                              className={`absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${
+                                deletingPhotoId === photo.id ? "pointer-events-none opacity-100" : ""
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                className="rounded-full bg-white/95 p-2 shadow-md ring-1 ring-black/10 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={deletingPhotoId != null}
+                                aria-label="Delete photo"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDeleteExistingPhoto(photo);
+                                }}
+                              >
+                                <TrashIcon className="h-6 w-6 text-red-600" strokeWidth={2} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const input = e.target;
+                      const list = input.files;
+                      if (!list?.length) return;
+                      const images = Array.from(list).filter((f) => f.type.startsWith("image/"));
+                      setPhotoQueue((q) => [
+                        ...q,
+                        ...images.map((file) => ({
+                          id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+                          file,
+                          previewUrl: URL.createObjectURL(file),
+                        })),
+                      ]);
+                      input.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    color="blue-gray"
+                    className="flex w-fit items-center gap-2"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <PhotoIcon className="h-5 w-5" />
+                    Add photos
+                  </Button>
+                  {photoQueue.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      <Typography variant="small" className="font-bold text-blue-gray-500">
+                        To upload ({photoQueue.length})
+                      </Typography>
+                      <div className="flex flex-wrap gap-3">
+                        {photoQueue.map((item) => (
+                          <div
+                            key={item.id}
+                            className="relative inline-block rounded-lg ring-1 ring-blue-gray-100"
+                          >
+                            <img
+                              src={item.previewUrl}
+                              alt=""
+                              className="h-24 w-24 rounded-lg object-cover"
+                            />
+                            <Button
+                              type="button"
+                              variant="text"
+                              color="red"
+                              className="!absolute -right-2 -top-2 h-8 min-w-0 rounded-full bg-white p-1 shadow"
+                              onClick={() => {
+                                if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+                                setPhotoQueue((q) => q.filter((x) => x.id !== item.id));
+                              }}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </CardBody>
+              </Card>
+            ) : null}
 
             <Card className="mb-6 mt-12 border border-blue-gray-100 shadow-sm">
               <CardHeader variant="gradient" color="gray" className="mb-2 p-6">
