@@ -103,6 +103,12 @@ function buildInitialValues(recipe, importPreview) {
   }
 
   if (importPreview) {
+    const ingredientsSorted = [...(importPreview.ingredients || [])].sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
+    const stepsSorted = [...(importPreview.steps || [])].sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
     return {
       title: importPreview.title || "",
       description: importPreview.description || "",
@@ -112,8 +118,8 @@ function buildInitialValues(recipe, importPreview) {
       cookMinutes: importPreview.cookMinutes ?? "",
       totalMinutes: importPreview.totalMinutes ?? "",
       ingredients:
-        importPreview.ingredients?.length > 0
-          ? importPreview.ingredients.map((i) => ({
+        ingredientsSorted.length > 0
+          ? ingredientsSorted.map((i) => ({
               name: i.name ?? "",
               quantity: i.quantity ?? "",
               unit: i.unit ?? "",
@@ -121,10 +127,12 @@ function buildInitialValues(recipe, importPreview) {
             }))
           : [{ name: "", quantity: "", unit: "", note: "" }],
       steps:
-        importPreview.steps?.length > 0
-          ? importPreview.steps.map((s) => ({ instruction: s.instruction ?? "" }))
+        stepsSorted.length > 0
+          ? stepsSorted.map((s) => ({ instruction: s.instruction ?? "" }))
           : [{ instruction: "" }],
-      tags: (importPreview.tags || []).join(", "),
+      tags: Array.isArray(importPreview.tags)
+        ? importPreview.tags.join(", ")
+        : String(importPreview.tags || ""),
     };
   }
 

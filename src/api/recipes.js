@@ -97,6 +97,38 @@ export async function duplicateRecipe(id) {
   return data;
 }
 
+/**
+ * Normalizes POST /recipes/import response.
+ * New shape: { parsed, error, warnings, recipe }. Legacy: plain recipe object.
+ * @returns {{ parsed: boolean, error: string|null, warnings: string[], recipe: object|null }}
+ */
+export function normalizeImportRecipeResponse(data) {
+  if (!data || typeof data !== "object") {
+    return { parsed: false, error: "Invalid response", warnings: [], recipe: null };
+  }
+  if (data.recipe == null && data.parsed === undefined && data.title != null) {
+    return {
+      parsed: true,
+      error: null,
+      warnings: Array.isArray(data.warnings) ? data.warnings : [],
+      recipe: data,
+    };
+  }
+  const err = data.error;
+  let errorStr = null;
+  if (err != null && err !== "") {
+    if (typeof err === "string") errorStr = err;
+    else if (typeof err === "object" && err.message) errorStr = String(err.message);
+    else errorStr = String(err);
+  }
+  return {
+    parsed: Boolean(data.parsed),
+    error: errorStr,
+    warnings: Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : [],
+    recipe: data.recipe && typeof data.recipe === "object" ? data.recipe : null,
+  };
+}
+
 /** POST /recipes/import  Body: { url } → preview (no DB write) */
 export async function importRecipePreview(url) {
   const { data } = await api.post("/recipes/import", { url });
