@@ -85,8 +85,8 @@ recipe-tracker-frontend/
 ## Roadmap
 
 - [x] User authentication
-- [ ] Recipe CRUD (create, read, update, delete)
-- [ ] Recipe import from URL
+- [x] Recipe CRUD (create, read, update, delete)
+- [x] Recipe import from URL
 - [ ] Ingredient and nutritional data display
 - [ ] Grocery list UI
 - [ ] Meal planning calendar
