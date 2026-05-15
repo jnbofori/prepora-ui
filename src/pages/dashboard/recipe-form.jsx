@@ -6,11 +6,18 @@ import {
   Typography,
   Button,
 } from "@material-tailwind/react";
-import { ArrowLeftIcon, PhotoIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowLeftIcon,
+  CalculatorIcon,
+  PhotoIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
 import { Formik, Form, FieldArray } from "formik";
 import * as Yup from "yup";
 import MyTextInput from "@/components/MyTextInput";
 import {
+  calculateRecipeNutrition,
   createRecipe,
   deleteRecipePhoto,
   updateRecipe,
@@ -18,6 +25,12 @@ import {
 } from "@/api/recipes";
 import { useAlert } from "@/context/AlertDialogContext";
 import { useToast } from "@/context/ToastContext";
+import {
+  applyNutritionToSavePayload,
+  buildNutritionCalculateBody,
+  canonicalIngredientsFingerprintFromForm,
+  normalizeIngredientFromForm,
+} from "@/utils/recipeNutrition";
 
 const httpsUrlRegex = /^https:\/\/.+/i;
 
@@ -212,12 +225,24 @@ function revokePreviewUrls(items) {
   }
 }
 
+function formatNutritionAmount(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const n = Number(value);
+  if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
+  return n.toFixed(2);
+}
+
 export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [photoQueue, setPhotoQueue] = useState([]);
   const [photoList, setPhotoList] = useState(() => sortRecipePhotos(recipe?.photos));
   const [deletingPhotoId, setDeletingPhotoId] = useState(null);
+  const [nutritionLoading, setNutritionLoading] = useState(false);
+  const [nutritionError, setNutritionError] = useState("");
+  const [nutritionResult, setNutritionResult] = useState(null);
+  /** Ingredients fingerprint at the time of last successful calculate (edit: must still match to save nutrition). */
+  const [nutritionIngredientsFingerprint, setNutritionIngredientsFingerprint] = useState(null);
   const fileInputRef = useRef(null);
   const photoQueueRef = useRef(photoQueue);
   const recipeIdForPhotosRef = useRef(null);
@@ -239,6 +264,12 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
   useEffect(() => {
     return () => revokePreviewUrls(photoQueueRef.current);
   }, []);
+
+  useEffect(() => {
+    setNutritionResult(null);
+    setNutritionIngredientsFingerprint(null);
+    setNutritionError("");
+  }, [recipe?.id]);
 
   const initialValues = buildInitialValues(recipe, importPreview);
 
@@ -267,6 +298,34 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
     }
   };
 
+  const handleCalculateNutrition = async (values) => {
+    setNutritionError("");
+    setNutritionResult(null);
+    setNutritionIngredientsFingerprint(null);
+    const { servings, ingredients } = buildNutritionCalculateBody(values);
+    if (ingredients.length === 0) {
+      setNutritionError("Add at least one ingredient with a name to calculate nutrition.");
+      return;
+    }
+    try {
+      setNutritionLoading(true);
+      const data = await calculateRecipeNutrition({ servings, ingredients });
+      setNutritionResult(data);
+      setNutritionIngredientsFingerprint(canonicalIngredientsFingerprintFromForm(values.ingredients));
+    } catch (e) {
+      console.error(e);
+      const msg =
+        e?.response?.data?.message ||
+        (typeof e?.response?.data === "string" ? e.response.data : null) ||
+        e?.message ||
+        "Could not calculate nutrition.";
+      setNutritionError(msg);
+      notify.error(msg);
+    } finally {
+      setNutritionLoading(false);
+    }
+  };
+
   const handleSubmit = async (values, { setErrors }) => {
     try {
       setSubmitting(true);
@@ -286,10 +345,7 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
         servings: Number(values.servings),
         ingredients: values.ingredients.map((i, index) => ({
           sortOrder: index + 1,
-          name: String(i.name || "").trim(),
-          quantity: i.quantity === "" || i.quantity == null ? null : Number(i.quantity),
-          unit: String(i.unit || "").trim(),
-          note: String(i.note || "").trim(),
+          ...normalizeIngredientFromForm(i),
         })),
         steps: values.steps.map((s, index) => ({
           sortOrder: index + 1,
@@ -297,6 +353,20 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
         })),
         tags,
       };
+
+      const currentIngredientsFingerprint = canonicalIngredientsFingerprintFromForm(
+        values.ingredients,
+      );
+      const shouldSendNutrition = nutritionResult
+        ? isEdit
+          ? nutritionIngredientsFingerprint != null &&
+            nutritionIngredientsFingerprint === currentIngredientsFingerprint
+          : true
+        : false;
+
+      if (shouldSendNutrition) {
+        applyNutritionToSavePayload(payload, nutritionResult);
+      }
 
       if (isEdit) {
         await updateRecipe(recipe.id, payload);
@@ -615,6 +685,179 @@ export default function RecipeForm({ recipe, importPreview, onClose, onSaved }) 
                     </div>
                   )}
                 </FieldArray>
+
+                <div className="mt-6 flex flex-col gap-4 border-t border-blue-gray-100 pt-6">
+                  <Typography variant="small" className="font-bold text-blue-gray-500">
+                    Nutrition
+                  </Typography>
+                  <Typography variant="small" className="text-blue-gray-600">
+                    Uses servings from Basics and the ingredient list above. Rows without a name are
+                    skipped.
+                  </Typography>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    color="blue-gray"
+                    className="flex w-fit items-center gap-2"
+                    disabled={nutritionLoading}
+                    onClick={() => handleCalculateNutrition(values)}
+                  >
+                    <CalculatorIcon className="h-5 w-5" />
+                    {nutritionLoading ? "Calculating…" : "Calculate nutrition"}
+                  </Button>
+                  {nutritionError ? (
+                    <div className="rounded-md border border-red-100 bg-red-50 p-3">
+                      <Typography variant="small" color="red">
+                        {nutritionError}
+                      </Typography>
+                    </div>
+                  ) : null}
+                  {nutritionResult ? (
+                    <div className="flex flex-col gap-4 rounded-lg border border-blue-gray-100 bg-blue-gray-50/50 p-4">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Calories (total)
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.calories)} kcal
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Calories / serving
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.caloriesPerServing)} kcal
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Protein / serving
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.proteinGramsPerServing)} g
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Carbs / serving
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.carbsGramsPerServing)} g
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Fat / serving
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.fatGramsPerServing)} g
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Protein (total)
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.proteinGrams)} g
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Carbs (total)
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.carbsGrams)} g
+                          </Typography>
+                        </div>
+                        <div>
+                          <Typography variant="small" className="font-bold text-blue-gray-500">
+                            Fat (total)
+                          </Typography>
+                          <Typography variant="paragraph" className="text-blue-gray-800">
+                            {formatNutritionAmount(nutritionResult.fatGrams)} g
+                          </Typography>
+                        </div>
+                      </div>
+                      {nutritionResult.calculatedUtc ? (
+                        <Typography variant="small" className="text-blue-gray-500">
+                          Calculated: {new Date(nutritionResult.calculatedUtc).toLocaleString()}
+                        </Typography>
+                      ) : null}
+                      {Array.isArray(nutritionResult.warnings) &&
+                      nutritionResult.warnings.length > 0 ? (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                          <Typography variant="small" className="mb-1 font-bold text-amber-900">
+                            Warnings
+                          </Typography>
+                          <ul className="list-inside list-disc text-sm text-amber-900">
+                            {nutritionResult.warnings.map((w, i) => (
+                              <li key={i}>{String(w)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {Array.isArray(nutritionResult.ingredients) &&
+                      nutritionResult.ingredients.length > 0 ? (
+                        <div>
+                          <Typography variant="small" className="mb-2 font-bold text-blue-gray-500">
+                            By ingredient
+                          </Typography>
+                          <div className="overflow-x-auto rounded-md border border-blue-gray-100 bg-white">
+                            <table className="w-full min-w-[32rem] text-left text-sm">
+                              <thead className="border-b border-blue-gray-100 bg-blue-gray-50">
+                                <tr>
+                                  <th className="px-3 py-2 font-semibold text-blue-gray-700">
+                                    Name
+                                  </th>
+                                  <th className="px-3 py-2 font-semibold text-blue-gray-700">kcal</th>
+                                  <th className="px-3 py-2 font-semibold text-blue-gray-700">P (g)</th>
+                                  <th className="px-3 py-2 font-semibold text-blue-gray-700">C (g)</th>
+                                  <th className="px-3 py-2 font-semibold text-blue-gray-700">F (g)</th>
+                                  <th className="px-3 py-2 font-semibold text-blue-gray-700">Note</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {nutritionResult.ingredients.map((row, i) => (
+                                  <tr
+                                    key={`${row.sortOrder ?? i}-${row.name ?? i}`}
+                                    className="border-b border-blue-gray-50 last:border-0"
+                                  >
+                                    <td className="px-3 py-2 text-blue-gray-800">{row.name}</td>
+                                    <td className="px-3 py-2 text-blue-gray-800">
+                                      {formatNutritionAmount(row.calories)}
+                                    </td>
+                                    <td className="px-3 py-2 text-blue-gray-800">
+                                      {formatNutritionAmount(row.proteinGrams)}
+                                    </td>
+                                    <td className="px-3 py-2 text-blue-gray-800">
+                                      {formatNutritionAmount(row.carbsGrams)}
+                                    </td>
+                                    <td className="px-3 py-2 text-blue-gray-800">
+                                      {formatNutritionAmount(row.fatGrams)}
+                                    </td>
+                                    <td className="px-3 py-2 text-blue-gray-600">
+                                      {row.warning ? String(row.warning) : "—"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : null}
+                      <details className="rounded-md border border-blue-gray-200 bg-white p-3">
+                        <summary className="cursor-pointer text-sm font-semibold text-blue-gray-700">
+                          Raw API response (JSON)
+                        </summary>
+                        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs text-blue-gray-800">
+                          {JSON.stringify(nutritionResult, null, 2)}
+                        </pre>
+                      </details>
+                    </div>
+                  ) : null}
+                </div>
               </CardBody>
             </Card>
 

@@ -6,6 +6,11 @@ import {
   TrashIcon,
 } from "@heroicons/react/24/outline";
 import MyTextInput from "@/components/MyTextInput";
+import {
+  formatNutritionDisplay,
+  hasRecipeLevelNutrition,
+  pickIngredientMacrosFromObject,
+} from "@/utils/recipeNutrition";
 
 function parseQuantity(qty) {
   const s = String(qty ?? "").trim();
@@ -59,6 +64,14 @@ export default function RecipeDetail({
     if (!Array.isArray(list) || list.length === 0) return [];
     return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   }, [detail?.photos]);
+
+  const sortedIngredients = useMemo(() => {
+    const list = detail?.ingredients;
+    if (!Array.isArray(list) || list.length === 0) return [];
+    return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  }, [detail?.ingredients]);
+
+  const showNutrition = detail && hasRecipeLevelNutrition(detail);
 
   return (
     <div className="mt-6 mb-8 flex flex-col gap-8">
@@ -129,6 +142,43 @@ export default function RecipeDetail({
                   </div>
                 ))}
               </div>
+              {showNutrition ? (
+                <div className="rounded-lg border border-blue-gray-100 bg-blue-gray-50/50 p-4">
+                  <Typography variant="h6" color="blue-gray" className="mb-3">
+                    Nutrition
+                  </Typography>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      ["Calories (recipe)", `${formatNutritionDisplay(detail.calories)} kcal`],
+                      ["Protein (recipe)", `${formatNutritionDisplay(detail.proteinGrams)} g`],
+                      ["Carbs (recipe)", `${formatNutritionDisplay(detail.carbsGrams)} g`],
+                      ["Fat (recipe)", `${formatNutritionDisplay(detail.fatGrams)} g`],
+                      [
+                        "Calories / serving",
+                        `${formatNutritionDisplay(detail.caloriesPerServing)} kcal`,
+                      ],
+                      ["Protein / serving", `${formatNutritionDisplay(detail.proteinGramsPerServing)} g`],
+                      ["Carbs / serving", `${formatNutritionDisplay(detail.carbsGramsPerServing)} g`],
+                      ["Fat / serving", `${formatNutritionDisplay(detail.fatGramsPerServing)} g`],
+                    ].map(([label, val]) => (
+                      <div key={label} className="rounded-lg bg-white/90 p-3 ring-1 ring-blue-gray-100">
+                        <Typography variant="small" className="font-bold text-blue-gray-400">
+                          {label}
+                        </Typography>
+                        <Typography variant="h6" color="blue-gray">
+                          {val}
+                        </Typography>
+                      </div>
+                    ))}
+                  </div>
+                  {detail.nutritionCalculatedUtc ? (
+                    <Typography variant="small" className="mt-3 text-blue-gray-500">
+                      Nutrition calculated:{" "}
+                      {new Date(detail.nutritionCalculatedUtc).toLocaleString()}
+                    </Typography>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="rounded-lg border border-blue-gray-100 p-4">
                 <Typography variant="small" className="mb-2 font-bold text-blue-gray-500">
                   Scale ingredients
@@ -156,17 +206,35 @@ export default function RecipeDetail({
                 <Typography variant="h6" color="blue-gray" className="mb-2">
                   Ingredients
                 </Typography>
-                <ul className="list-disc space-y-2 pl-5">
-                  {(detail.ingredients || []).map((row, i) => {
+                <ul className="list-disc space-y-3 pl-5">
+                  {sortedIngredients.map((row, i) => {
                     const base = parseQuantity(row.quantity);
                     const qty = base != null ? formatScaled(base * scaleFactor) : row.quantity;
+                    const macros = pickIngredientMacrosFromObject(row);
+                    const noteText = row.note != null && String(row.note).trim() !== "" ? row.note : null;
                     return (
-                      <li key={i}>
-                        <span className="font-semibold text-blue-gray-800">
-                          {qty}
-                          {row.unit ? ` ${row.unit}` : ""}
-                        </span>{" "}
-                        {row.name}
+                      <li key={row.id ?? `ing-${i}`} className="text-blue-gray-800">
+                        <div>
+                          <span className="font-semibold text-blue-gray-800">
+                            {qty ?? ""}
+                            {row.unit ? ` ${row.unit}` : ""}
+                          </span>{" "}
+                          {row.name}
+                          {noteText ? (
+                            <span className="text-blue-gray-500"> ({noteText})</span>
+                          ) : null}
+                        </div>
+                        {macros ? (
+                          <Typography
+                            variant="small"
+                            className="mt-1 block pl-0 text-blue-gray-500 md:pl-1"
+                          >
+                            {formatNutritionDisplay(macros.calories)} kcal · P{" "}
+                            {formatNutritionDisplay(macros.proteinGrams)} g · C{" "}
+                            {formatNutritionDisplay(macros.carbsGrams)} g · F{" "}
+                            {formatNutritionDisplay(macros.fatGrams)} g
+                          </Typography>
+                        ) : null}
                       </li>
                     );
                   })}

@@ -1,4 +1,8 @@
 import api from "@/api/axios";
+import {
+  mapIngredientToApiPayload,
+  pickRecipeNutritionFields,
+} from "@/utils/recipeNutrition";
 
 function mapRecipeToApiPayload(recipe) {
   const tags = Array.isArray(recipe.tags) ? recipe.tags : [];
@@ -17,18 +21,10 @@ function mapRecipeToApiPayload(recipe) {
     cookMinutes: recipe.cookMinutes ?? null,
     totalMinutes: recipe.totalMinutes ?? null,
     servings: recipe.servings,
-    ingredients: ingredients.map((ingredient, index) => ({
-      sortOrder: index + 1,
-      name: ingredient.name,
-      quantity:
-        ingredient.quantity === "" || ingredient.quantity == null
-          ? null
-          : Number(ingredient.quantity),
-      unit: ingredient.unit || "",
-      note: ingredient.note || "",
-    })),
+    ingredients: ingredients.map(mapIngredientToApiPayload),
     steps,
     tags,
+    ...pickRecipeNutritionFields(recipe),
   };
 }
 
@@ -168,4 +164,10 @@ export async function uploadRecipePhotosBatch(recipeId, files) {
 /** DELETE /recipes/{recipeId}/photos/{photoId} */
 export async function deleteRecipePhoto(recipeId, photoId) {
   await api.delete(`/recipes/${recipeId}/photos/${photoId}`);
+}
+
+/** POST /recipes/nutrition/calculate  Body: { servings, ingredients } */
+export async function calculateRecipeNutrition(body) {
+  const { data } = await api.post("/recipes/nutrition/calculate", body);
+  return data;
 }
